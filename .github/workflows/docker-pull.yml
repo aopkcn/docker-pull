@@ -1,4 +1,4 @@
-name: PIG 镜像 action
+name: 拉取镜像推送
 
 on:
   workflow_dispatch:
