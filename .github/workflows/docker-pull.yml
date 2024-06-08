@@ -4,17 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       IMAGE_NAME:
-        description: '原镜像名称'
+        description: '原镜像名称:版本'
         required: true
         default: 'mysql/mysql-server'
       NEW_NAME:
-        description: '同步后镜像名称'
+        description: '同步后镜像名称:版本'
         required: true
         default: 'mysql-server'
-      IMAGE_VERSION:
-        description: '镜像版本'
-        required: true
-        default: 'latest'
       TARGET_REGISTRY:
         description: '仓库地址'
         required: true
@@ -27,6 +23,15 @@ on:
         description: '系统架构'
         required: true
         default: 'amd64'
+        type: choice
+        options:
+          - amd64
+          - arm64
+          - arm/v7
+          - arm/v6
+          - 386
+          - s390x
+          - ppc64le
 
 jobs:
   build:
@@ -48,9 +53,9 @@ jobs:
       - name: 拉取、标记并推送 Docker 镜像
         id: pull_tag_push
         run: |
-          docker pull --platform ${{ github.event.inputs.ARCH }} ${{ github.event.inputs.IMAGE_NAME }}:${{ github.event.inputs.IMAGE_VERSION }}
-          docker tag ${{ github.event.inputs.IMAGE_NAME }}:${{ github.event.inputs.IMAGE_VERSION }} ${{ github.event.inputs.TARGET_REGISTRY }}/${{ github.event.inputs.TARGET_REPOSITORY }}/${{ github.event.inputs.NEW_NAME }}:${{ github.event.inputs.IMAGE_VERSION }}
-          docker push ${{ github.event.inputs.TARGET_REGISTRY }}/${{ github.event.inputs.TARGET_REPOSITORY }}/${{ github.event.inputs.NEW_NAME }}:${{ github.event.inputs.IMAGE_VERSION }}
+          docker pull --platform ${{ github.event.inputs.ARCH }} ${{ github.event.inputs.IMAGE_NAME }}
+          docker tag ${{ github.event.inputs.IMAGE_NAME }} ${{ github.event.inputs.TARGET_REGISTRY }}/${{ github.event.inputs.TARGET_REPOSITORY }}/${{ github.event.inputs.NEW_NAME }}
+          docker push ${{ github.event.inputs.TARGET_REGISTRY }}/${{ github.event.inputs.TARGET_REPOSITORY }}/${{ github.event.inputs.NEW_NAME }}
         continue-on-error: true
 
       - name: 检查镜像推送成功
