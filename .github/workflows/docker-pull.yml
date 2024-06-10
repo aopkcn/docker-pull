@@ -14,11 +14,11 @@ on:
       TARGET_REGISTRY:
         description: '仓库地址'
         required: true
-        default: 'registry.cn-chengdu.aliyuncs.com'
+        default: 'registry.cn-hangzhou.aliyuncs.com'
       TARGET_REPOSITORY:
         description: '空间名称'
         required: true
-        default: 'aopkcn'
+        default: 'chancsd'
       ARCH:
         description: '系统架构'
         required: true
