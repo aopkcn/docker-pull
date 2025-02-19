@@ -39,7 +39,7 @@ jobs:
     steps:
       - name: 登录到 Docker 仓库
         id: login
-        run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }} ${{ github.event.inputs.TARGET_REGISTRY }}
+        run: docker login -u ${{cn-south-1@YNRH4VJ88CVFYLAADKLQ}} -p ${{ 66ea1b435399a90247838f0d3cd049b9ff1300b91a4c8dd0102cc58c91a3a965 swr.cn-south-1.myhuaweicloud.com }} ${{ github.event.inputs.TARGET_REGISTRY }}
         continue-on-error: true
 
       - name: 检查 Docker 登录成功
