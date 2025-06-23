@@ -1,24 +1,23 @@
 name: 拉取镜像推送
 
 on:
+  push:
+    paths:
+      - 'images.txt'
   workflow_dispatch:
     inputs:
-      IMAGE_NAME:
-        description: '原镜像名称:版本'
+      IMAGES_FILE:
+        description: '镜像列表文件路径'
         required: true
-        default: 'mysql/mysql-server'
-      NEW_NAME:
-        description: '同步后镜像名称:版本'
-        required: true
-        default: 'mysql-server'
+        default: 'images.txt'
       TARGET_REGISTRY:
         description: '仓库地址'
         required: true
-        default: 'registry.cn-chengdu.aliyuncs.com'
+        default: 'crpi-4a2bcohw4rh1g57m.cn-guangzhou.personal.cr.aliyuncs.com'
       TARGET_REPOSITORY:
         description: '空间名称'
         required: true
-        default: 'aopkcn'
+        default: 'xin-devops'
       ARCH:
         description: '系统架构'
         required: true
@@ -29,7 +28,7 @@ on:
           - arm64
           - arm/v7
           - arm/v6
-          - 386
+          - "386"
           - s390x
           - ppc64le
 
@@ -37,9 +36,52 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: 检出代码库
+        uses: actions/checkout@v2
+
+      - name: 设置默认配置
+        id: set_defaults
+        run: |
+          # 设置默认值，支持自动触发和手动触发
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "IMAGES_FILE=images.txt" >> $GITHUB_ENV
+            echo "TARGET_REGISTRY=crpi-4a2bcohw4rh1g57m.cn-guangzhou.personal.cr.aliyuncs.com" >> $GITHUB_ENV
+            echo "TARGET_REPOSITORY=xin-devops" >> $GITHUB_ENV
+            echo "ARCH=amd64" >> $GITHUB_ENV
+          else
+            echo "IMAGES_FILE=${{ github.event.inputs.IMAGES_FILE }}" >> $GITHUB_ENV
+            echo "TARGET_REGISTRY=${{ github.event.inputs.TARGET_REGISTRY }}" >> $GITHUB_ENV
+            echo "TARGET_REPOSITORY=${{ github.event.inputs.TARGET_REPOSITORY }}" >> $GITHUB_ENV
+            echo "ARCH=${{ github.event.inputs.ARCH }}" >> $GITHUB_ENV
+          fi
+          echo "触发方式: ${{ github.event_name }}"
+          echo "镜像文件: $IMAGES_FILE"
+          echo "目标仓库: $TARGET_REGISTRY"
+          echo "空间名称: $TARGET_REPOSITORY"
+          echo "系统架构: $ARCH"
+
+      - name: 读取镜像列表文件
+        id: read_images
+        run: |
+          # 检查镜像文件是否存在
+          if [ ! -f "${{ env.IMAGES_FILE }}" ]; then
+            echo "错误: 镜像文件 ${{ env.IMAGES_FILE }} 不存在"
+            exit 1
+          fi
+          
+          # 读取并过滤空行和注释行
+          images=$(grep -v '^#' ${{ env.IMAGES_FILE }} | grep -v '^$' | tr '\n' ' ')
+          if [ -z "$images" ]; then
+            echo "警告: 镜像文件中没有找到有效的镜像配置"
+            exit 1
+          fi
+          
+          echo "读取到的镜像列表: $images"
+          echo "images=$images" >> $GITHUB_ENV
+
       - name: 登录到 Docker 仓库
         id: login
-        run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }} ${{ github.event.inputs.TARGET_REGISTRY }}
+        run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }} ${{ env.TARGET_REGISTRY }}
         continue-on-error: true
 
       - name: 检查 Docker 登录成功
@@ -53,15 +95,100 @@ jobs:
       - name: 拉取、标记并推送 Docker 镜像
         id: pull_tag_push
         run: |
-          docker pull --platform ${{ github.event.inputs.ARCH }} ${{ github.event.inputs.IMAGE_NAME }}
-          docker tag ${{ github.event.inputs.IMAGE_NAME }} ${{ github.event.inputs.TARGET_REGISTRY }}/${{ github.event.inputs.TARGET_REPOSITORY }}/${{ github.event.inputs.NEW_NAME }}
-          docker push ${{ github.event.inputs.TARGET_REGISTRY }}/${{ github.event.inputs.TARGET_REPOSITORY }}/${{ github.event.inputs.NEW_NAME }}
+          success_count=0
+          fail_count=0
+          
+          for image in ${{ env.images }}; do
+            echo "=== 处理镜像: $image ==="
+            
+            # 解析镜像名称和标签
+            if [[ "$image" == *":"* ]]; then
+              original_image=$(echo $image | cut -d':' -f1)
+              tag=$(echo $image | cut -d':' -f2)
+            else
+              original_image=$image
+              tag="latest"
+            fi
+            
+            base_image=$(basename $original_image)
+            new_image="${{ env.TARGET_REGISTRY }}/${{ env.TARGET_REPOSITORY }}/$base_image:$tag"
+            
+            echo "源镜像: $original_image:$tag"
+            echo "目标镜像: $new_image"
+            echo "系统架构: ${{ env.ARCH }}"
+            
+            # 拉取镜像
+            if docker pull --platform ${{ env.ARCH }} $original_image:$tag; then
+              echo "✅ 镜像拉取成功: $original_image:$tag"
+              
+              # 标记镜像
+              if docker tag $original_image:$tag $new_image; then
+                echo "✅ 镜像标记成功: $new_image"
+                
+                # 推送镜像
+                if docker push $new_image; then
+                  echo "✅ 镜像推送成功: $new_image"
+                  success_count=$((success_count + 1))
+                else
+                  echo "❌ 镜像推送失败: $new_image"
+                  fail_count=$((fail_count + 1))
+                fi
+              else
+                echo "❌ 镜像标记失败: $new_image"
+                fail_count=$((fail_count + 1))
+              fi
+            else
+              echo "❌ 镜像拉取失败: $original_image:$tag"
+              fail_count=$((fail_count + 1))
+            fi
+            
+            echo "" # 空行分隔
+          done
+          
+          echo "=== 处理结果汇总 ==="
+          echo "成功: $success_count 个镜像"
+          echo "失败: $fail_count 个镜像"
+          
+          # 设置输出变量
+          echo "success_count=$success_count" >> $GITHUB_ENV
+          echo "fail_count=$fail_count" >> $GITHUB_ENV
+          
+          # 如果有失败的镜像，设置失败状态
+          if [ $fail_count -gt 0 ]; then
+            exit 1
+          fi
         continue-on-error: true
 
-      - name: 检查镜像推送成功
-        if: ${{ steps.pull_tag_push.outcome == 'success' }}
-        run: echo "Docker 镜像推送成功"
-
-      - name: 检查镜像推送失败
-        if: ${{ steps.pull_tag_push.outcome != 'success' }}
-        run: echo "Docker 镜像推送失败"
+      - name: 输出最终结果
+        if: always()
+        run: |
+          echo "=== 工作流执行结果 ==="
+          echo "触发方式: ${{ github.event_name }}"
+          echo "目标仓库: ${{ env.TARGET_REGISTRY }}"
+          echo "空间名称: ${{ env.TARGET_REPOSITORY }}"
+          echo "系统架构: ${{ env.ARCH }}"
+          
+          if [ "${{ steps.login.outcome }}" = "success" ]; then
+            echo "✅ Docker 仓库登录成功"
+          else
+            echo "❌ Docker 仓库登录失败"
+          fi
+          
+          if [ "${{ steps.pull_tag_push.outcome }}" = "success" ]; then
+            echo "✅ 所有镜像处理成功 (成功: ${{ env.success_count }} 个)"
+          else
+            echo "⚠️  镜像处理完成，但有部分失败"
+            echo "   成功: ${{ env.success_count }} 个镜像"
+            echo "   失败: ${{ env.fail_count }} 个镜像"
+          fi
+          
+          # 设置工作流状态
+          if [ "${{ steps.login.outcome }}" != "success" ]; then
+            echo "::error::Docker 仓库登录失败，请检查 DOCKER_USERNAME 和 DOCKER_PASSWORD 配置"
+            exit 1
+          elif [ "${{ steps.pull_tag_push.outcome }}" != "success" ]; then
+            echo "::warning::部分镜像处理失败，请查看上述日志了解详情"
+            exit 1
+          else
+            echo "::notice::所有镜像同步成功完成！"
+          fi

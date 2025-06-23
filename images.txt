@@ -1,0 +1,16 @@
+# Docker 镜像同步配置文件
+# 格式: 镜像名称:标签
+# 支持带域名的完整镜像地址，如: registry.k8s.io/kube-apiserver:v1.28.0
+# 支持简单镜像名称，如: nginx:latest
+# 以 # 开头的行为注释，空行会被忽略
+
+# Harbor 相关镜像
+goharbor/harbor-portal:v2.12.1
+goharbor/harbor-core:v2.12.1
+
+# 示例：其他常用镜像（取消注释即可使用）
+# nginx:latest
+# redis:7-alpine
+# mysql:8.0
+# registry.k8s.io/pause:3.9
+
